@@ -1,11 +1,13 @@
 // Leaflet Map and Geolocation Management
 import { CONFIG } from './config.js';
+import { showToast } from './ui.js';
 
 let mapInstance = null;
 let userMarker = null;
 let accuracyCircle = null;
 let currentPosition = null;
 let watchId = null;
+let hasAnnouncedLocation = false;
 
 let startPinMarker = null;
 let endPinMarker = null;
@@ -32,10 +34,15 @@ export function initMap() {
         subdomains: ['a', 'b', 'c']
     }).addTo(mapInstance);
 
-    // Custom GPS current position marker with nested elements to prevent CSS transform conflicts
+    // Custom GPS current position marker with inline fallback styling
     const gpsIcon = L.divIcon({
         className: 'gps-container',
-        html: '<div class="gps-pulse-ring"></div><div class="gps-dot"></div>',
+        html: `
+            <div style="position: relative; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">
+                <div class="gps-pulse-ring" style="position: absolute; width: 28px; height: 28px; border-radius: 50%; background: rgba(56, 189, 248, 0.35); border: 1.5px solid #38bdf8;"></div>
+                <div class="gps-dot" style="position: relative; width: 14px; height: 14px; background: #0284c7; border: 2.5px solid #ffffff; border-radius: 50%; box-shadow: 0 2px 6px rgba(0,0,0,0.5); z-index: 2;"></div>
+            </div>
+        `,
         iconSize: [32, 32],
         iconAnchor: [16, 16]
     });
@@ -78,8 +85,16 @@ export function centerOnUser() {
                 if (mapInstance) {
                     mapInstance.setView(latLng, mapInstance.getZoom() || CONFIG.MAP_DEFAULT_ZOOM, { animate: true });
                 }
+                showToast(`📍 Snapped to GPS (±${Math.round(accuracy)}m)`, 'info', 2000);
             },
-            (err) => console.warn('Recenter GPS error:', err),
+            (err) => {
+                console.warn('Recenter GPS error:', err);
+                if (err.code === 1) {
+                    showToast('Location permission denied in browser.', 'error', 4000);
+                } else {
+                    showToast('Could not refresh GPS. Using last known coordinates.', 'warning', 3000);
+                }
+            },
             { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
         );
     }
@@ -172,7 +187,7 @@ export function clearRoutePreview() {
  */
 function startGeolocationTracking(gpsIcon) {
     if (!('geolocation' in navigator)) {
-        console.warn('Geolocation is not supported by this browser.');
+        showToast('Geolocation is not supported by your browser.', 'error', 5000);
         return;
     }
 
@@ -210,10 +225,23 @@ function startGeolocationTracking(gpsIcon) {
         } else {
             userMarker.setLatLng(latLng);
         }
+
+        if (!hasAnnouncedLocation) {
+            hasAnnouncedLocation = true;
+            showToast(`📍 GPS signal locked (±${Math.round(accuracy)}m)`, 'success', 3000);
+        }
     };
 
     const handleError = (err) => {
         console.warn(`Geolocation error (${err.code}): ${err.message}`);
+        if (err.code === 1) { // PERMISSION_DENIED
+            showToast('GPS permission denied. Please allow location access in your browser.', 'error', 6000);
+        } else if (err.code === 2) { // POSITION_UNAVAILABLE
+            // Retry with low accuracy
+            navigator.geolocation.getCurrentPosition(updateLocation, () => {}, { enableHighAccuracy: false, timeout: 10000 });
+        } else if (err.code === 3) { // TIMEOUT
+            navigator.geolocation.getCurrentPosition(updateLocation, () => {}, { enableHighAccuracy: false, timeout: 15000 });
+        }
     };
 
     navigator.geolocation.getCurrentPosition(updateLocation, handleError, options);

@@ -404,7 +404,8 @@ html, body {
 }
 
 /* GPS Marker (Container does not animate transform, avoiding Leaflet position bugs) */
-.gps-container {
+.gps-container,
+.leaflet-div-icon.gps-container {
     background: transparent !important;
     border: none !important;
     display: flex;

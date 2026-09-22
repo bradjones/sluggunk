@@ -182,6 +182,142 @@ export function clearRoutePreview() {
     }
 }
 
+// Collections for multi-player elements
+const remoteStartPins = new Map();
+const slugMarkers = new Map();
+const trailPolylines = new Map();
+
+/**
+ * Renders or updates a moving slug avatar marker
+ */
+export function renderSlugAvatar(attemptId, coords, playerName, color = '#10b981', isSelf = false) {
+    if (!mapInstance) return;
+
+    let marker = slugMarkers.get(attemptId);
+    if (marker) {
+        marker.setLatLng([coords.lat, coords.lng]);
+    } else {
+        const slugIcon = L.divIcon({
+            className: 'slug-marker-wrapper',
+            html: `
+                <div style="display: flex; flex-direction: column; align-items: center; pointer-events: none;">
+                    <div class="slug-body slug-crawling" style="border-color: ${color}; box-shadow: 0 4px 14px ${color}88;">
+                        <span style="display: inline-block; transform: scaleX(-1);">🐌</span>
+                    </div>
+                    <div class="slug-label" style="border-color: ${color}; color: ${color};">
+                        ${isSelf ? '⭐ ' : ''}${playerName}
+                    </div>
+                </div>
+            `,
+            iconSize: [64, 64],
+            iconAnchor: [32, 21]
+        });
+
+        marker = L.marker([coords.lat, coords.lng], { icon: slugIcon, zIndexOffset: 800 }).addTo(mapInstance);
+        slugMarkers.set(attemptId, marker);
+    }
+}
+
+/**
+ * Removes a slug avatar marker from the map
+ */
+export function removeSlugAvatar(attemptId) {
+    const marker = slugMarkers.get(attemptId);
+    if (marker && mapInstance) {
+        mapInstance.removeLayer(marker);
+        slugMarkers.delete(attemptId);
+    }
+}
+
+/**
+ * Renders or updates the path traveled by a slug (or completed path)
+ */
+export function renderTraveledTrail(attemptId, latLngs, color = '#10b981', isCompleted = false) {
+    if (!mapInstance || !latLngs || latLngs.length < 2) return;
+
+    let polyline = trailPolylines.get(attemptId);
+    if (polyline) {
+        polyline.setLatLngs(latLngs);
+        if (isCompleted) {
+            polyline.setStyle({
+                weight: 5,
+                opacity: 0.95,
+                dashArray: null
+            });
+        }
+    } else {
+        polyline = L.polyline(latLngs, {
+            color: color,
+            weight: isCompleted ? 5 : 4,
+            opacity: isCompleted ? 0.95 : 0.8,
+            lineCap: 'round',
+            lineJoin: 'round'
+        }).addTo(mapInstance);
+        trailPolylines.set(attemptId, polyline);
+    }
+}
+
+/**
+ * Removes a traveled trail from the map
+ */
+export function removeTraveledTrail(attemptId) {
+    const polyline = trailPolylines.get(attemptId);
+    if (polyline && mapInstance) {
+        mapInstance.removeLayer(polyline);
+        trailPolylines.delete(attemptId);
+    }
+}
+
+/**
+ * Renders a start pin marker for any player's attempt
+ */
+export function renderRemoteStartPin(attemptId, coords, playerName, color = '#10b981') {
+    if (!mapInstance) return;
+
+    let marker = remoteStartPins.get(attemptId);
+    if (!marker) {
+        const icon = L.divIcon({
+            className: 'slug-marker',
+            html: `
+                <div class="pin-marker" style="background: ${color}; border-color: #fff;"></div>
+                <div class="slug-label" style="border-color: ${color}; color: ${color}; font-size: 0.68rem;">
+                    ${playerName} (Start)
+                </div>
+            `,
+            iconSize: [50, 40],
+            iconAnchor: [25, 10]
+        });
+
+        marker = L.marker([coords.lat, coords.lng], { icon, zIndexOffset: 400 }).addTo(mapInstance);
+        remoteStartPins.set(attemptId, marker);
+    }
+}
+
+/**
+ * Removes a remote start pin
+ */
+export function removeRemoteStartPin(attemptId) {
+    const marker = remoteStartPins.get(attemptId);
+    if (marker && mapInstance) {
+        mapInstance.removeLayer(marker);
+        remoteStartPins.delete(attemptId);
+    }
+}
+
+/**
+ * Cleans up all session artifacts (avatars, trails, remote pins)
+ */
+export function clearAllGameLayers() {
+    slugMarkers.forEach(marker => mapInstance && mapInstance.removeLayer(marker));
+    slugMarkers.clear();
+
+    trailPolylines.forEach(line => mapInstance && mapInstance.removeLayer(line));
+    trailPolylines.clear();
+
+    remoteStartPins.forEach(pin => mapInstance && mapInstance.removeLayer(pin));
+    remoteStartPins.clear();
+}
+
 /**
  * Starts continuous HTML5 Geolocation tracking
  */

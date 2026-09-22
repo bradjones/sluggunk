@@ -303,17 +303,40 @@ async function cancelStartPin() {
     if (!myActiveAttempt) return;
 
     const supabase = getSupabase();
-    await supabase
-        .from('attempts')
-        .delete()
-        .eq('id', myActiveAttempt.id);
+    const attemptId = myActiveAttempt.id;
 
-    sessionAttempts.delete(myActiveAttempt.id);
+    // Immediately clear local state so UI is responsive
+    sessionAttempts.delete(attemptId);
     clearStartPin();
     clearEndPin();
     clearRoutePreview();
     myActiveAttempt = null;
     updateGameControls();
+
+    if (!supabase) return;
+
+    // 1. First, update status to 'voided' in DB.
+    // This succeeds with the existing UPDATE RLS policy ("Allow players to update own attempt")
+    // and guarantees that even if DELETE RLS is blocked by DB, loadMyActiveAttempt()
+    // will NEVER resurrect this pin on page reload (it only queries 'started' and 'moving').
+    try {
+        await supabase
+            .from('attempts')
+            .update({ status: 'voided' })
+            .eq('id', attemptId);
+    } catch (err) {
+        console.warn('Error marking attempt voided on cancel:', err);
+    }
+
+    // 2. Also attempt hard delete from attempts table
+    try {
+        await supabase
+            .from('attempts')
+            .delete()
+            .eq('id', attemptId);
+    } catch (err) {
+        console.warn('Error deleting attempt on cancel:', err);
+    }
 }
 
 /**
@@ -453,11 +476,18 @@ function subscribeToAttemptsRealtime(sessionId) {
                     if (user && newRecord.player_id === user.id) {
                         myActiveAttempt = null;
                         clearMapArtifacts();
-                        showToast('💥 Your path was intercepted! You are stunned for 1 hour.', 'error', 6000);
-                        await checkPlayerStun();
+                        updateGameControls();
+                        // Only show stun toast if this was an actual moving collision, not a cancelled pin
+                        if (newRecord.move_started_at) {
+                            showToast('💥 Your path was intercepted! You are stunned for 1 hour.', 'error', 6000);
+                            await checkPlayerStun();
+                        }
                     } else {
-                        const victimName = newRecord.profiles?.display_name || 'A slug';
-                        showToast(`💥 ${victimName} was intercepted and squished!`, 'warning', 4000);
+                        // Only notify session members if this was a moving slug that got squished
+                        if (newRecord.move_started_at) {
+                            const victimName = newRecord.profiles?.display_name || 'A slug';
+                            showToast(`💥 ${victimName} was intercepted and squished!`, 'warning', 4000);
+                        }
                     }
                     return;
                 }

@@ -218,6 +218,10 @@ CREATE POLICY "Allow players to update own attempt"
     ON attempts FOR UPDATE TO authenticated
     USING (auth.uid() = player_id);
 
+CREATE POLICY "Allow players to delete own attempt"
+    ON attempts FOR DELETE TO authenticated
+    USING (auth.uid() = player_id);
+
 -- Stuns: View stuns, insert stun record
 CREATE POLICY "Allow authenticated to view stuns"
     ON stuns FOR SELECT TO authenticated

@@ -169,8 +169,23 @@
                             </div>
                             <button id="btn-copy-code" class="icon-btn" title="Copy code">📋</button>
                         </div>
-                        <div id="session-admin-controls" style="margin-top: 14px; display: none;">
-                            <button id="btn-end-session" class="btn btn-danger" style="width: 100%;">End Session (Admin)</button>
+
+                        <!-- Player Roster -->
+                        <div style="margin-top: 14px;">
+                            <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin-bottom: 8px;">
+                                Slugs in Session (<span id="session-player-count">0</span>)
+                            </div>
+                            <div id="session-players-container" style="display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow-y: auto;">
+                                <!-- Populated dynamically -->
+                            </div>
+                        </div>
+
+                        <!-- Session Action Controls -->
+                        <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 16px;">
+                            <button id="btn-leave-session" class="btn btn-secondary">Leave Session</button>
+                            <div id="session-admin-controls" style="display: none;">
+                                <button id="btn-end-session" class="btn btn-danger" style="width: 100%;">End Session (Admin)</button>
+                            </div>
                         </div>
                     </div>
 

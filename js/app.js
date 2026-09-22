@@ -4,6 +4,7 @@ import { initMap } from './map.js';
 import { openModal, closeModal, setupModalListeners, showToast } from './ui.js';
 import { initAuth, getCurrentUser, getCurrentProfile } from './auth.js';
 import { initSessions, getCurrentSession } from './sessions.js';
+import { initGame, syncGameState } from './game.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     // 1. Initialize modal dismissal and interactive triggers
@@ -16,9 +17,13 @@ document.addEventListener('DOMContentLoaded', () => {
         console.error('Failed to initialize map:', err);
     }
 
-    // 3. Initialize Authentication and Profile Sync
+    // 3. Initialize Game Action Handlers (pins, recenter, stuns)
+    initGame();
+
+    // 4. Initialize Authentication and Profile Sync
     initAuth((user, profile) => {
         updateHUDStatus();
+        syncGameState();
 
         if (user && !getCurrentSession()) {
             // Suggest joining or creating a session if not in one
@@ -30,12 +35,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // 4. Initialize Session Management
+    // 5. Initialize Session Management
     initSessions((session, players, isAdmin) => {
         updateHUDStatus();
+        syncGameState();
     });
 
-    // 5. Check configuration on boot
+    // 6. Check configuration on boot
     if (!isConfigured()) {
         console.log('Supabase configuration needed. Opening setup modal.');
         openModal('modal-setup');
@@ -47,7 +53,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 600);
     }
 
-    // 6. Header action buttons
+    // 7. Header action buttons
     document.getElementById('btn-close-setup')?.addEventListener('click', () => {
         closeModal('modal-setup');
     });
@@ -68,24 +74,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Initial pin-drop click protection: check session and auth
-    document.getElementById('btn-drop-start')?.addEventListener('click', () => {
-        const user = getCurrentUser();
-        if (!user) {
-            showToast('Sign in first to drop pins!', 'warning');
-            openModal('modal-auth');
-            return;
-        }
-
-        const session = getCurrentSession();
-        if (!session) {
-            showToast('Join or create a session first!', 'warning');
-            openModal('modal-session');
-            return;
-        }
-    });
-
-    console.log('Slugs Phase 3 (Session Management) initialized.');
+    console.log('Slugs Phase 4 (Map & Pin Dropping) initialized.');
 });
 
 function updateHUDStatus() {

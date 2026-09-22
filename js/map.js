@@ -3,6 +3,7 @@ import { CONFIG } from './config.js';
 
 let mapInstance = null;
 let userMarker = null;
+let accuracyCircle = null;
 let currentPosition = null;
 let watchId = null;
 
@@ -31,11 +32,12 @@ export function initMap() {
         subdomains: ['a', 'b', 'c']
     }).addTo(mapInstance);
 
-    // Custom GPS current position marker
+    // Custom GPS current position marker with nested elements to prevent CSS transform conflicts
     const gpsIcon = L.divIcon({
-        className: 'gps-current-pulse',
-        iconSize: [16, 16],
-        iconAnchor: [8, 8]
+        className: 'gps-container',
+        html: '<div class="gps-pulse-ring"></div><div class="gps-dot"></div>',
+        iconSize: [32, 32],
+        iconAnchor: [16, 16]
     });
 
     startGeolocationTracking(gpsIcon);
@@ -51,11 +53,35 @@ export function getCurrentUserCoords() {
     return currentPosition;
 }
 
+/**
+ * Recenter map on user and request a fresh zero-age GPS fix
+ */
 export function centerOnUser() {
     if (mapInstance && currentPosition) {
-        mapInstance.setView([currentPosition.lat, currentPosition.lng], CONFIG.MAP_DEFAULT_ZOOM, {
+        mapInstance.setView([currentPosition.lat, currentPosition.lng], mapInstance.getZoom() || CONFIG.MAP_DEFAULT_ZOOM, {
             animate: true
         });
+    }
+
+    if ('geolocation' in navigator) {
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                const { latitude, longitude, accuracy } = pos.coords;
+                currentPosition = { lat: latitude, lng: longitude, accuracy };
+                const latLng = [latitude, longitude];
+
+                if (userMarker) userMarker.setLatLng(latLng);
+                if (accuracyCircle) {
+                    accuracyCircle.setLatLng(latLng);
+                    accuracyCircle.setRadius(accuracy || 10);
+                }
+                if (mapInstance) {
+                    mapInstance.setView(latLng, mapInstance.getZoom() || CONFIG.MAP_DEFAULT_ZOOM, { animate: true });
+                }
+            },
+            (err) => console.warn('Recenter GPS error:', err),
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
     }
 }
 
@@ -153,7 +179,7 @@ function startGeolocationTracking(gpsIcon) {
     const options = {
         enableHighAccuracy: true,
         timeout: 15000,
-        maximumAge: 5000
+        maximumAge: 3000
     };
 
     const updateLocation = (pos) => {
@@ -162,6 +188,22 @@ function startGeolocationTracking(gpsIcon) {
 
         const latLng = [latitude, longitude];
 
+        // 1. Accuracy circle
+        if (!accuracyCircle) {
+            accuracyCircle = L.circle(latLng, {
+                radius: accuracy || 15,
+                color: '#38bdf8',
+                fillColor: '#38bdf8',
+                fillOpacity: 0.12,
+                weight: 1,
+                opacity: 0.4
+            }).addTo(mapInstance);
+        } else {
+            accuracyCircle.setLatLng(latLng);
+            accuracyCircle.setRadius(accuracy || 15);
+        }
+
+        // 2. Position marker
         if (!userMarker) {
             userMarker = L.marker(latLng, { icon: gpsIcon, zIndexOffset: 1000 }).addTo(mapInstance);
             mapInstance.setView(latLng, CONFIG.MAP_DEFAULT_ZOOM);

@@ -31,68 +31,79 @@ export function lerpCoordinates(start, end, progress) {
 }
 
 /**
- * Helper cross-product for 2D orientation test.
- * > 0: counter-clockwise, < 0: clockwise, = 0: collinear
- */
-function ccw(A, B, C) {
-    return (C.lat - A.lat) * (B.lng - A.lng) - (B.lat - A.lat) * (C.lng - A.lng);
-}
-
-/**
- * Checks if point C lies on segment AB (assuming collinear).
- */
-function onSegment(A, B, C) {
-    return Math.min(A.lng, B.lng) <= C.lng && C.lng <= Math.max(A.lng, B.lng) &&
-           Math.min(A.lat, B.lat) <= C.lat && C.lat <= Math.max(A.lat, B.lat);
-}
-
-/**
  * Determines whether two 2D line segments [p1 -> p2] and [p3 -> p4] intersect.
- * Coordinates are { lat, lng } or { x: lat, y: lng }.
+ * Coordinates are { lat, lng }.
  */
 export function lineSegmentsIntersect(p1, p2, p3, p4) {
-    const d1 = ccw(p3, p4, p1);
-    const d2 = ccw(p3, p4, p2);
-    const d3 = ccw(p1, p2, p3);
-    const d4 = ccw(p1, p2, p4);
-
-    // General case: strictly crossing
-    if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
-        ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) {
-        return true;
-    }
-
-    // Collinear edge cases
-    if (d1 === 0 && onSegment(p3, p4, p1)) return true;
-    if (d2 === 0 && onSegment(p3, p4, p2)) return true;
-    if (d3 === 0 && onSegment(p1, p2, p3)) return true;
-    if (d4 === 0 && onSegment(p1, p2, p4)) return true;
-
-    return false;
-}
-
-/**
- * Computes exact intersection point of two lines defined by (p1, p2) and (p3, p4) if one exists.
- */
-export function getIntersectionPoint(p1, p2, p3, p4) {
-    if (!lineSegmentsIntersect(p1, p2, p3, p4)) {
-        return null;
-    }
-
     const x1 = p1.lng, y1 = p1.lat;
     const x2 = p2.lng, y2 = p2.lat;
     const x3 = p3.lng, y3 = p3.lat;
     const x4 = p4.lng, y4 = p4.lat;
 
     const denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
-    if (Math.abs(denom) < 1e-12) {
-        // Collinear or parallel
-        return { lat: (p1.lat + p2.lat) / 2, lng: (p1.lng + p2.lng) / 2 };
+    const EPS = 1e-9;
+
+    if (Math.abs(denom) > 1e-12) {
+        const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom;
+        const u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / denom;
+        return t >= -EPS && t <= (1 + EPS) && u >= -EPS && u <= (1 + EPS);
     }
 
-    const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom;
-    return {
-        lat: y1 + t * (y2 - y1),
-        lng: x1 + t * (x2 - x1)
-    };
+    // Collinear or parallel check
+    const cross = (x2 - x1) * (y3 - y1) - (y2 - y1) * (x3 - x1);
+    if (Math.abs(cross) > 1e-10) return false;
+
+    const minX1 = Math.min(x1, x2), maxX1 = Math.max(x1, x2);
+    const minY1 = Math.min(y1, y2), maxY1 = Math.max(y1, y2);
+    const minX2 = Math.min(x3, x4), maxX2 = Math.max(x3, x4);
+    const minY2 = Math.min(y3, y4), maxY2 = Math.max(y3, y4);
+
+    return Math.max(minX1, minX2) <= Math.min(maxX1, maxX2) + EPS &&
+           Math.max(minY1, minY2) <= Math.min(maxY1, maxY2) + EPS;
+}
+
+/**
+ * Computes exact intersection point of two lines defined by (p1, p2) and (p3, p4) if one exists.
+ */
+export function getIntersectionPoint(p1, p2, p3, p4) {
+    const x1 = p1.lng, y1 = p1.lat;
+    const x2 = p2.lng, y2 = p2.lat;
+    const x3 = p3.lng, y3 = p3.lat;
+    const x4 = p4.lng, y4 = p4.lat;
+
+    const denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+    const EPS = 1e-9;
+
+    if (Math.abs(denom) > 1e-12) {
+        const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom;
+        const u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / denom;
+
+        if (t >= -EPS && t <= (1 + EPS) && u >= -EPS && u <= (1 + EPS)) {
+            const clampedT = Math.max(0, Math.min(1, t));
+            return {
+                lat: y1 + clampedT * (y2 - y1),
+                lng: x1 + clampedT * (x2 - x1)
+            };
+        }
+        return null;
+    }
+
+    // Collinear overlap
+    const cross = (x2 - x1) * (y3 - y1) - (y2 - y1) * (x3 - x1);
+    if (Math.abs(cross) > 1e-10) return null;
+
+    const minX1 = Math.min(x1, x2), maxX1 = Math.max(x1, x2);
+    const minY1 = Math.min(y1, y2), maxY1 = Math.max(y1, y2);
+    const minX2 = Math.min(x3, x4), maxX2 = Math.max(x3, x4);
+    const minY2 = Math.min(y3, y4), maxY2 = Math.max(y3, y4);
+
+    if (Math.max(minX1, minX2) <= Math.min(maxX1, maxX2) + EPS &&
+        Math.max(minY1, minY2) <= Math.min(maxY1, maxY2) + EPS) {
+        return {
+            lat: (Math.max(minY1, minY2) + Math.min(maxY1, maxY2)) / 2,
+            lng: (Math.max(minX1, minX2) + Math.min(maxX1, maxX2)) / 2
+        };
+    }
+
+    return null;
 }

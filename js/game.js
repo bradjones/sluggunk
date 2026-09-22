@@ -19,7 +19,12 @@ import {
     removeRemoteStartPin,
     clearAllGameLayers
 } from './map.js';
-import { haversineDistance, lerpCoordinates } from './geometry.js';
+import { 
+    haversineDistance, 
+    lerpCoordinates, 
+    lineSegmentsIntersect, 
+    getIntersectionPoint 
+} from './geometry.js';
 import { showToast, openModal } from './ui.js';
 import { CONFIG } from './config.js';
 
@@ -450,6 +455,9 @@ function subscribeToAttemptsRealtime(sessionId) {
                         clearMapArtifacts();
                         showToast('💥 Your path was intercepted! You are stunned for 1 hour.', 'error', 6000);
                         await checkPlayerStun();
+                    } else {
+                        const victimName = newRecord.profiles?.display_name || 'A slug';
+                        showToast(`💥 ${victimName} was intercepted and squished!`, 'warning', 4000);
                     }
                     return;
                 }
@@ -529,6 +537,24 @@ function startMovementLoop() {
                 // Deterministic current avatar coordinate
                 const currentPos = lerpCoordinates(start, end, progress);
 
+                // --- COLLISION DETECTION & SPOILER MECHANIC (Phase 6) ---
+                if (isSelf && myActiveAttempt?.id === attempt.id) {
+                    const collision = checkPathCollision(attempt, currentPos, now, speedMps);
+                    if (collision) {
+                        voidMyAttempt(attempt, collision.spoilerPlayerName, collision.hitPoint);
+                        return;
+                    }
+                } else if (!isSelf) {
+                    // For remote slugs: verify if they crossed an obstacle
+                    const collision = checkPathCollision(attempt, currentPos, now, speedMps);
+                    if (collision && now >= collision.collisionTime) {
+                        removeSlugAvatar(attempt.id);
+                        removeTraveledTrail(attempt.id);
+                        sessionAttempts.delete(attempt.id);
+                        return;
+                    }
+                }
+
                 // Render moving avatar
                 renderSlugAvatar(attempt.id, currentPos, playerName, color, isSelf);
 
@@ -594,6 +620,200 @@ async function completeMyAttempt(attempt, scoreMeters) {
         if (leaderboardModal?.classList.contains('active')) {
             loadAndRenderLeaderboard();
         }
+    }
+}
+
+/**
+ * Plays a quick synth squish sound effect when a slug is voided (Web Audio API)
+ */
+function playSquishSound() {
+    try {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) return;
+        const audioCtx = new AudioContextClass();
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(340, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(50, audioCtx.currentTime + 0.35);
+
+        gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.35);
+
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.36);
+    } catch (e) {
+        // Audio may be prevented until user gesture
+    }
+}
+
+/**
+ * Checks if a moving attempt's traveled trail intersects any active trail of OTHER players.
+ * Returns null if no collision, or { obstacleAttempt, spoilerPlayerName, hitPoint, collisionTime } if collided.
+ */
+function checkPathCollision(attempt, currentPos, now, speedMps) {
+    const myStart = { lat: attempt.start_lat, lng: attempt.start_lng };
+    const myCurrent = { lat: currentPos.lat, lng: currentPos.lng };
+    const myStartTime = new Date(attempt.move_started_at).getTime();
+
+    for (const [otherId, other] of sessionAttempts.entries()) {
+        // 1. Ignore self-collision (own past or present attempts never void own slug)
+        if (other.player_id === attempt.player_id) continue;
+
+        // 2. Ignore invalid or voided attempts
+        if (other.status !== 'completed' && other.status !== 'moving') continue;
+
+        const otherName = other.profiles?.display_name || 'Another player';
+
+        if (other.status === 'completed') {
+            // Check if completed path is still active (within 1 hour)
+            const expiresAtMs = other.expires_at ? new Date(other.expires_at).getTime() : 0;
+            if (expiresAtMs <= now) continue;
+
+            const otherStart = { lat: other.start_lat, lng: other.start_lng };
+            const otherEnd = { lat: other.end_lat, lng: other.end_lng };
+
+            // Check segment intersection: my traveled path vs other completed path
+            if (lineSegmentsIntersect(myStart, myCurrent, otherStart, otherEnd)) {
+                const hitPoint = getIntersectionPoint(myStart, myCurrent, otherStart, otherEnd);
+                if (!hitPoint) continue;
+
+                // Doorstep check: Ignore if within 10m of start pin of either player
+                const distFromMyStart = haversineDistance(myStart.lat, myStart.lng, hitPoint.lat, hitPoint.lng);
+                const distFromOtherStart = haversineDistance(otherStart.lat, otherStart.lng, hitPoint.lat, hitPoint.lng);
+                if (distFromMyStart < 10 || distFromOtherStart < 10) continue;
+
+                // Temporal check: Did my slug reach hitPoint AFTER the other path reached hitPoint?
+                const myTimeAtHitMs = myStartTime + (distFromMyStart / speedMps) * 1000;
+
+                let otherTimeAtHitMs = 0;
+                if (other.move_started_at) {
+                    const otherDist = haversineDistance(otherStart.lat, otherStart.lng, hitPoint.lat, hitPoint.lng);
+                    otherTimeAtHitMs = new Date(other.move_started_at).getTime() + (otherDist / speedMps) * 1000;
+                } else if (other.completed_at) {
+                    otherTimeAtHitMs = new Date(other.completed_at).getTime();
+                }
+
+                // If I arrived after or simultaneously with the other path -> collision!
+                if (myTimeAtHitMs >= otherTimeAtHitMs - 1000) {
+                    return {
+                        obstacleAttempt: other,
+                        spoilerPlayerName: otherName,
+                        hitPoint,
+                        collisionTime: myTimeAtHitMs
+                    };
+                }
+            }
+        } else if (other.status === 'moving') {
+            if (!other.end_lat || !other.end_lng || !other.move_started_at) continue;
+
+            const otherStart = { lat: other.start_lat, lng: other.start_lng };
+            const otherEnd = { lat: other.end_lat, lng: other.end_lng };
+
+            // Calculate other slug's current position right now
+            const otherTotalDist = haversineDistance(otherStart.lat, otherStart.lng, otherEnd.lat, otherEnd.lng);
+            const otherTotalSeconds = otherTotalDist / speedMps;
+            const otherElapsed = (now - new Date(other.move_started_at).getTime()) / 1000;
+            const otherProgress = Math.min(1.0, Math.max(0.0, otherElapsed / otherTotalSeconds));
+            const otherCurrent = lerpCoordinates(otherStart, otherEnd, otherProgress);
+
+            // Check if my traveled trail intersects other's traveled trail
+            if (lineSegmentsIntersect(myStart, myCurrent, otherStart, otherCurrent)) {
+                const hitPoint = getIntersectionPoint(myStart, myCurrent, otherStart, otherCurrent);
+                if (!hitPoint) continue;
+
+                // Doorstep check
+                const distFromMyStart = haversineDistance(myStart.lat, myStart.lng, hitPoint.lat, hitPoint.lng);
+                const distFromOtherStart = haversineDistance(otherStart.lat, otherStart.lng, hitPoint.lat, hitPoint.lng);
+                if (distFromMyStart < 10 || distFromOtherStart < 10) continue;
+
+                const myTimeAtHitMs = myStartTime + (distFromMyStart / speedMps) * 1000;
+                const otherStartTime = new Date(other.move_started_at).getTime();
+                const otherTimeAtHitMs = otherStartTime + (distFromOtherStart / speedMps) * 1000;
+
+                // If I arrived after the other slug, OR if both arrived simultaneously (within 5 seconds)
+                if (myTimeAtHitMs >= otherTimeAtHitMs - 5000) {
+                    return {
+                        obstacleAttempt: other,
+                        spoilerPlayerName: otherName,
+                        hitPoint,
+                        collisionTime: myTimeAtHitMs
+                    };
+                }
+            }
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Voids player's active attempt upon collision, triggers feedback, and starts 1-hour stun
+ */
+async function voidMyAttempt(attempt, spoilerPlayerName, hitPoint) {
+    if (!myActiveAttempt || myActiveAttempt.id !== attempt.id || myActiveAttempt.status === 'voided') {
+        return;
+    }
+
+    // Set local state immediately
+    myActiveAttempt = { ...attempt, status: 'voided' };
+    sessionAttempts.delete(attempt.id);
+
+    removeSlugAvatar(attempt.id);
+    removeTraveledTrail(attempt.id);
+    clearMapArtifacts();
+
+    // Visual, haptic, and audio feedback
+    playSquishSound();
+    if (navigator.vibrate) {
+        try { navigator.vibrate([200, 100, 200, 100, 400]); } catch (e) {}
+    }
+    const appEl = document.getElementById('app') || document.body;
+    appEl.classList.add('collision-shake');
+    setTimeout(() => appEl.classList.remove('collision-shake'), 600);
+
+    showToast(`💥 SQUISHED! Intercepted by ${spoilerPlayerName}'s path! Stunned for 1 hour.`, 'error', 8000);
+
+    const supabase = getSupabase();
+    if (!supabase) return;
+
+    const now = new Date();
+    const stunUntil = new Date(now.getTime() + CONFIG.STUN_DURATION_MS).toISOString();
+
+    try {
+        // 1. Update attempt status in DB
+        await supabase
+            .from('attempts')
+            .update({
+                status: 'voided',
+                completed_at: now.toISOString()
+            })
+            .eq('id', attempt.id);
+
+        // 2. Record stun in DB
+        await supabase
+            .from('stuns')
+            .insert({
+                session_id: attempt.session_id,
+                player_id: attempt.player_id,
+                stunned_at: now.toISOString(),
+                stunned_until: stunUntil,
+                caused_by_attempt: attempt.id
+            });
+
+        // 3. Start local stun cooldown
+        isStunned = true;
+        stunUntilDate = new Date(stunUntil);
+        startStunCountdown();
+        updateGameControls();
+    } catch (err) {
+        console.error('Error recording void & stun:', err);
     }
 }
 

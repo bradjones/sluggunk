@@ -16,7 +16,7 @@
           integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
 
     <!-- Application CSS -->
-    <link rel="stylesheet" href="css/style.css?v=1.0.5">
+    <link rel="stylesheet" href="css/style.css?v=1.0.6">
 
     <!-- Supabase JS Client (v2) -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -59,8 +59,8 @@
 
             <!-- Primary Action Buttons -->
             <div class="action-row">
-                <button id="btn-drop-start" class="btn btn-primary">
-                    <span>📍</span> Drop Start Pin
+                <button id="btn-drop-start" class="btn btn-primary" disabled style="opacity: 0.7;">
+                    <span>⏳</span> Checking status...
                 </button>
                 <button id="btn-drop-end" class="btn btn-info" style="display: none;">
                     <span>🏁</span> Drop End Pin
@@ -233,6 +233,6 @@
     </div>
 
     <!-- Main Module Application Entry Point -->
-    <script type="module" src="js/app.js?v=1.0.5"></script>
+    <script type="module" src="js/app.js?v=1.0.6"></script>
 </body>
 </html>

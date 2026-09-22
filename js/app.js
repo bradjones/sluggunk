@@ -4,7 +4,7 @@ import { initMap } from './map.js';
 import { openModal, closeModal, setupModalListeners, showToast } from './ui.js';
 import { initAuth, getCurrentUser, getCurrentProfile } from './auth.js';
 import { initSessions, getCurrentSession } from './sessions.js';
-import { initGame, syncGameState } from './game.js';
+import { initGame, syncGameState, loadAndRenderLeaderboard } from './game.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     // 1. Initialize modal dismissal and interactive triggers
@@ -59,6 +59,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.getElementById('btn-leaderboard')?.addEventListener('click', () => {
+        loadAndRenderLeaderboard();
         openModal('modal-leaderboard');
     });
 

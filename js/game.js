@@ -27,6 +27,7 @@ let myActiveAttempt = null;
 let isStunned = false;
 let stunTimer = null;
 let stunUntilDate = null;
+let isStateSyncing = true; // Prevents race conditions on page load
 
 // Multi-player session attempts collection
 const sessionAttempts = new Map();
@@ -73,12 +74,17 @@ export function initGame() {
             await checkPlayerStun();
         }
     }, 10000);
+
+    updateGameControls();
 }
 
 /**
  * Reloads attempt and stun status when session or user changes
  */
 export async function syncGameState() {
+    isStateSyncing = true;
+    updateGameControls(); // Locks buttons into loading state
+
     clearMapArtifacts();
     clearAllGameLayers();
     sessionAttempts.clear();
@@ -96,17 +102,25 @@ export async function syncGameState() {
             clearInterval(movementLoopTimer);
             movementLoopTimer = null;
         }
+        isStateSyncing = false;
         updateGameControls();
         return;
     }
 
-    await checkPlayerStun();
-    await loadMyActiveAttempt();
-    await loadSessionAttempts(session.id);
-    subscribeToAttemptsRealtime(session.id);
+    try {
+        await checkPlayerStun();
+        await loadMyActiveAttempt();
+        await loadSessionAttempts(session.id);
+        subscribeToAttemptsRealtime(session.id);
 
-    if (!movementLoopTimer) {
-        startMovementLoop();
+        if (!movementLoopTimer) {
+            startMovementLoop();
+        }
+    } catch (err) {
+        console.error('Error syncing game state:', err);
+    } finally {
+        isStateSyncing = false;
+        updateGameControls();
     }
 }
 
@@ -199,6 +213,32 @@ async function createStartPin(coords) {
     const supabase = getSupabase();
     const user = getCurrentUser();
     const session = getCurrentSession();
+
+    // Guard against race conditions: check if attempt already exists in DB
+    const { data: existing } = await supabase
+        .from('attempts')
+        .select(`*, profiles(display_name)`)
+        .eq('session_id', session.id)
+        .eq('player_id', user.id)
+        .in('status', ['started', 'moving'])
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+    if (existing && existing.length > 0) {
+        myActiveAttempt = existing[0];
+        sessionAttempts.set(myActiveAttempt.id, myActiveAttempt);
+        setStartPin(myActiveAttempt.start_lat, myActiveAttempt.start_lng);
+        if (myActiveAttempt.status === 'moving' && myActiveAttempt.end_lat && myActiveAttempt.end_lng) {
+            setEndPin(myActiveAttempt.end_lat, myActiveAttempt.end_lng);
+            setRoutePreview(
+                { lat: myActiveAttempt.start_lat, lng: myActiveAttempt.start_lng },
+                { lat: myActiveAttempt.end_lat, lng: myActiveAttempt.end_lng }
+            );
+        }
+        updateGameControls();
+        showToast('Resumed active route!', 'info');
+        return;
+    }
 
     const { data: attempt, error } = await supabase
         .from('attempts')
@@ -548,6 +588,12 @@ async function completeMyAttempt(attempt, scoreMeters) {
         clearRoutePreview();
         updateGameControls();
         showToast(`🏁 Slug reached target! +${Math.round(scoreMeters)}m scored!`, 'success', 6000);
+        
+        // Refresh leaderboard if it is currently open
+        const leaderboardModal = document.getElementById('modal-leaderboard');
+        if (leaderboardModal?.classList.contains('active')) {
+            loadAndRenderLeaderboard();
+        }
     }
 }
 
@@ -583,6 +629,111 @@ function getPlayerColor(playerId) {
     }
     const index = Math.abs(hash) % PLAYER_COLORS.length;
     return PLAYER_COLORS[index];
+}
+
+/**
+ * Queries completed attempts and renders ranked leaderboard
+ */
+export async function loadAndRenderLeaderboard() {
+    const listContainer = document.getElementById('leaderboard-list');
+    if (!listContainer) return;
+
+    const session = getCurrentSession();
+    if (!session) {
+        listContainer.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 20px;">Join or create a session to see the leaderboard.</p>';
+        return;
+    }
+
+    const supabase = getSupabase();
+    if (!supabase) return;
+
+    listContainer.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 20px;">Loading scores...</p>';
+
+    try {
+        const { data: attempts, error } = await supabase
+            .from('attempts')
+            .select(`
+                id,
+                player_id,
+                score,
+                status,
+                profiles ( display_name )
+            `)
+            .eq('session_id', session.id)
+            .eq('status', 'completed');
+
+        if (error) throw error;
+
+        // Group scores by player
+        const playerStats = new Map();
+
+        // Include all session members even with 0 points
+        const { getSessionPlayers } = await import('./sessions.js');
+        const players = getSessionPlayers();
+        players.forEach(p => {
+            playerStats.set(p.player_id, {
+                playerId: p.player_id,
+                name: p.profiles?.display_name || 'Pilot',
+                totalScore: 0,
+                completedCount: 0
+            });
+        });
+
+        attempts?.forEach(att => {
+            const current = playerStats.get(att.player_id) || {
+                playerId: att.player_id,
+                name: att.profiles?.display_name || 'Pilot',
+                totalScore: 0,
+                completedCount: 0
+            };
+            current.totalScore += Math.round(att.score || 0);
+            current.completedCount += 1;
+            playerStats.set(att.player_id, current);
+        });
+
+        const sorted = Array.from(playerStats.values()).sort((a, b) => b.totalScore - a.totalScore);
+
+        if (sorted.length === 0 || sorted.every(s => s.totalScore === 0)) {
+            listContainer.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 20px;">No completed paths yet in this session. Crawl your first route to score!</p>';
+            return;
+        }
+
+        listContainer.innerHTML = '';
+        const user = getCurrentUser();
+
+        sorted.forEach((stat, index) => {
+            const isSelf = user && stat.playerId === user.id;
+            const row = document.createElement('div');
+            row.className = 'banner';
+            row.style.padding = '10px 14px';
+
+            let medal = `#${index + 1}`;
+            if (index === 0) medal = '🥇';
+            if (index === 1) medal = '🥈';
+            if (index === 2) medal = '🥉';
+
+            row.innerHTML = `
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 1.15rem; font-weight: 700; width: 26px; text-align: center;">${medal}</span>
+                    <div>
+                        <div style="font-weight: 700; font-size: 0.95rem;">
+                            ${stat.name} ${isSelf ? '<span style="color: var(--primary); font-size: 0.75rem;">(You)</span>' : ''}
+                        </div>
+                        <div style="color: var(--text-muted); font-size: 0.75rem;">
+                            ${stat.completedCount} path${stat.completedCount === 1 ? '' : 's'} completed
+                        </div>
+                    </div>
+                </div>
+                <div style="font-weight: 800; font-size: 1.15rem; color: var(--primary);">
+                    ${stat.totalScore.toLocaleString()}m
+                </div>
+            `;
+            listContainer.appendChild(row);
+        });
+    } catch (err) {
+        console.error('Error rendering leaderboard:', err);
+        listContainer.innerHTML = `<p style="color: var(--danger); text-align: center; padding: 20px;">Error loading scores: ${err.message}</p>`;
+    }
 }
 
 /**
@@ -663,6 +814,11 @@ function startStunCountdown() {
  * Validates prerequisites before pin dropping
  */
 function validateCanDrop() {
+    if (isStateSyncing) {
+        showToast('Checking game status, please wait a moment...', 'info');
+        return false;
+    }
+
     const user = getCurrentUser();
     if (!user) {
         showToast('Please sign in first!', 'warning');
@@ -705,6 +861,15 @@ export function updateGameControls() {
     const statusText = document.getElementById('status-text');
 
     if (!btnDropStart || !btnDropEnd || !btnCancel) return;
+
+    if (isStateSyncing) {
+        btnDropStart.style.display = 'flex';
+        btnDropStart.disabled = true;
+        btnDropStart.innerHTML = '<span>⏳</span> Checking status...';
+        btnDropEnd.style.display = 'none';
+        btnCancel.style.display = 'none';
+        return;
+    }
 
     if (isStunned) {
         btnDropStart.style.display = 'flex';

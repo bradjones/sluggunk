@@ -88,38 +88,65 @@
             </div>
         </div>
 
-        <!-- MODAL: Auth (Sign In / Register) -->
+        <!-- MODAL: Auth (Sign In / Register / Profile) -->
         <div id="modal-auth" class="modal-overlay">
             <div class="modal-card">
                 <div class="modal-header">
                     <h2 id="auth-title">🐌 Welcome to Slugs</h2>
+                    <button class="icon-btn close-modal" style="width: 32px; height: 32px;">✕</button>
                 </div>
                 <div class="modal-body">
-                    <div style="display: flex; gap: 8px; margin-bottom: 8px;">
-                        <button id="tab-login" class="btn btn-secondary" style="flex: 1;">Sign In</button>
-                        <button id="tab-register" class="btn btn-primary" style="flex: 1;">Register</button>
+                    <!-- Auth Forms (when logged out) -->
+                    <div id="auth-form-container">
+                        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                            <button id="tab-login" class="btn btn-secondary" style="flex: 1;">Sign In</button>
+                            <button id="tab-register" class="btn btn-primary" style="flex: 1;">Register</button>
+                        </div>
+
+                        <form id="form-auth">
+                            <div id="group-display-name" class="form-group">
+                                <label for="input-display-name">Display Name (Slug name)</label>
+                                <input id="input-display-name" class="form-input" type="text" placeholder="e.g. TurboSlug" maxlength="20" required>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="input-email">Email</label>
+                                <input id="input-email" class="form-input" type="email" placeholder="you@example.com" required>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="input-password">Password</label>
+                                <input id="input-password" class="form-input" type="password" placeholder="••••••••" minlength="6" required>
+                            </div>
+
+                            <button id="btn-auth-submit" type="submit" class="btn btn-primary" style="width: 100%; margin-top: 12px;">
+                                Create Account
+                            </button>
+                        </form>
                     </div>
 
-                    <form id="form-auth">
-                        <div id="group-display-name" class="form-group">
-                            <label for="input-display-name">Display Name (Slug name)</label>
-                            <input id="input-display-name" class="form-input" type="text" placeholder="e.g. TurboSlug" maxlength="20" required>
+                    <!-- Profile Details (when logged in) -->
+                    <div id="auth-profile-container" style="display: none;">
+                        <div class="banner" style="flex-direction: column; align-items: flex-start; gap: 8px;">
+                            <div>
+                                <span style="font-size: 0.8rem; color: var(--text-muted);">Slug Pilot</span>
+                                <div id="profile-display-name" style="font-weight: 700; font-size: 1.2rem; color: var(--primary);">Player</div>
+                            </div>
+                            <div id="profile-email" style="font-size: 0.85rem; color: var(--text-muted);">player@example.com</div>
                         </div>
 
-                        <div class="form-group">
-                            <label for="input-email">Email</label>
-                            <input id="input-email" class="form-input" type="email" placeholder="you@example.com" required>
+                        <div class="form-group" style="margin-top: 12px;">
+                            <label for="input-update-name">Change Display Name</label>
+                            <div style="display: flex; gap: 8px;">
+                                <input id="input-update-name" class="form-input" type="text" placeholder="New display name" maxlength="20">
+                                <button id="btn-update-name" class="btn btn-secondary" style="min-height: auto; flex: 0 0 90px;">Save</button>
+                            </div>
                         </div>
 
-                        <div class="form-group">
-                            <label for="input-password">Password</label>
-                            <input id="input-password" class="form-input" type="password" placeholder="••••••••" minlength="6" required>
-                        </div>
-
-                        <button id="btn-auth-submit" type="submit" class="btn btn-primary" style="width: 100%; margin-top: 12px;">
-                            Create Account
+                        <button id="btn-logout" class="btn btn-danger" style="margin-top: 16px; width: 100%;">
+                            Sign Out
                         </button>
-                    </form>
+                    </div>
                 </div>
             </div>
         </div>

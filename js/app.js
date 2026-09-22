@@ -1,7 +1,8 @@
 // Slugs - Application Bootstrap & Main Coordinator
-import { isConfigured, getSupabase } from './supabase.js';
+import { isConfigured } from './supabase.js';
 import { initMap } from './map.js';
 import { openModal, closeModal, setupModalListeners, showToast } from './ui.js';
+import { initAuth, getCurrentUser, getCurrentProfile } from './auth.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     // 1. Initialize modal dismissal and interactive triggers
@@ -14,24 +15,31 @@ document.addEventListener('DOMContentLoaded', () => {
         console.error('Failed to initialize map:', err);
     }
 
-    // 3. Check Supabase connection credentials
+    // 3. Initialize Authentication and Profile Sync
+    initAuth((user, profile) => {
+        const statusText = document.getElementById('status-text');
+        if (user) {
+            const name = profile?.display_name || user.email.split('@')[0];
+            if (statusText) statusText.textContent = `${name}: Ready`;
+        } else {
+            if (statusText) statusText.textContent = 'Sign in to crawl';
+        }
+    });
+
+    // 4. Check configuration on boot
     if (!isConfigured()) {
         console.log('Supabase configuration needed. Opening setup modal.');
         openModal('modal-setup');
     } else {
-        const supabase = getSupabase();
-        console.log('Supabase client initialized successfully.');
-        // Check active session or prompt auth modal if not signed in
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            if (!session) {
+        // If configured but user is not logged in, prompt sign in
+        setTimeout(() => {
+            if (!getCurrentUser()) {
                 openModal('modal-auth');
-            } else {
-                showToast(`Welcome back! Signed in as ${session.user.email}`, 'success');
             }
-        });
+        }, 600);
     }
 
-    // 4. Header action buttons
+    // 5. Header action buttons
     document.getElementById('btn-close-setup')?.addEventListener('click', () => {
         closeModal('modal-setup');
     });
@@ -52,5 +60,5 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    console.log('Slugs Phase 1 initialized.');
+    console.log('Slugs Phase 2 (Authentication) initialized.');
 });

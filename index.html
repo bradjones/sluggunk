@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Slugs - Real-World Multiplayer Path Strategy</title>
+    
+    <!-- Mobile Web App Meta -->
+    <meta name="theme-color" content="#0f172a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="description" content="A real-world slow-burn multiplayer path strategy game played in real time.">
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+
+    <!-- Application CSS -->
+    <link rel="stylesheet" href="css/style.css">
+
+    <!-- Supabase JS Client (v2) -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" 
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+</head>
+<body>
+    <div id="app">
+        <!-- Leaflet Map Element -->
+        <div id="map"></div>
+
+        <!-- Top HUD -->
+        <header class="hud-top">
+            <div id="player-status-badge" class="hud-badge status-idle">
+                <span id="status-icon">🐌</span>
+                <span id="status-text">Ready to crawl</span>
+            </div>
+
+            <div style="display: flex; gap: 6px;">
+                <button id="btn-leaderboard" class="icon-btn" title="Leaderboard" aria-label="Leaderboard">🏆</button>
+                <button id="btn-session" class="icon-btn" title="Session Info" aria-label="Session Info">👥</button>
+                <button id="btn-user" class="icon-btn" title="Account / Sign Out" aria-label="Account">👤</button>
+            </div>
+        </header>
+
+        <!-- Bottom HUD Actions -->
+        <footer class="hud-bottom">
+            <!-- GPS Accuracy & Distance Info Banner -->
+            <div id="info-banner" class="banner" style="display: none;">
+                <span id="banner-text">Move started...</span>
+                <span id="banner-subtext" style="color: var(--text-muted);">ETA: --</span>
+            </div>
+
+            <!-- Primary Action Buttons -->
+            <div class="action-row">
+                <button id="btn-drop-start" class="btn btn-primary">
+                    <span>📍</span> Drop Start Pin
+                </button>
+                <button id="btn-drop-end" class="btn btn-info" style="display: none;">
+                    <span>🏁</span> Drop End Pin
+                </button>
+                <button id="btn-cancel-pin" class="btn btn-secondary" style="display: none; max-width: 90px;">
+                    ✕
+                </button>
+            </div>
+        </footer>
+
+        <!-- Toast Notifications -->
+        <div id="toast-container"></div>
+
+        <!-- MODAL: Config / Setup Warning -->
+        <div id="modal-setup" class="modal-overlay">
+            <div class="modal-card">
+                <div class="modal-header">
+                    <h2>⚙️ Supabase Setup Required</h2>
+                </div>
+                <div class="modal-body">
+                    <p>Welcome to <strong>Slugs</strong>! To enable real-time multiplayer, you just need to connect your free Supabase project:</p>
+                    <ol style="padding-left: 20px; line-height: 1.6; color: var(--text-muted);">
+                        <li>Create a free project at <a href="https://supabase.com" target="_blank" style="color: var(--primary);">supabase.com</a>.</li>
+                        <li>Open the SQL Editor in your Supabase dashboard and run the code in <code style="color: #38bdf8;">sql/schema.sql</code>.</li>
+                        <li>In Auth &rarr; Providers &rarr; Email, disable <em>"Confirm email"</em>.</li>
+                        <li>Copy your <strong>Project URL</strong> and <strong>Anon Key</strong> into <code style="color: #38bdf8;">js/config.js</code>.</li>
+                    </ol>
+                    <button id="btn-close-setup" class="btn btn-primary" style="margin-top: 10px;">Got it!</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL: Auth (Sign In / Register) -->
+        <div id="modal-auth" class="modal-overlay">
+            <div class="modal-card">
+                <div class="modal-header">
+                    <h2 id="auth-title">🐌 Welcome to Slugs</h2>
+                </div>
+                <div class="modal-body">
+                    <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                        <button id="tab-login" class="btn btn-secondary" style="flex: 1;">Sign In</button>
+                        <button id="tab-register" class="btn btn-primary" style="flex: 1;">Register</button>
+                    </div>
+
+                    <form id="form-auth">
+                        <div id="group-display-name" class="form-group">
+                            <label for="input-display-name">Display Name (Slug name)</label>
+                            <input id="input-display-name" class="form-input" type="text" placeholder="e.g. TurboSlug" maxlength="20" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="input-email">Email</label>
+                            <input id="input-email" class="form-input" type="email" placeholder="you@example.com" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="input-password">Password</label>
+                            <input id="input-password" class="form-input" type="password" placeholder="••••••••" minlength="6" required>
+                        </div>
+
+                        <button id="btn-auth-submit" type="submit" class="btn btn-primary" style="width: 100%; margin-top: 12px;">
+                            Create Account
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL: Session Lobby (Create / Join) -->
+        <div id="modal-session" class="modal-overlay">
+            <div class="modal-card">
+                <div class="modal-header">
+                    <h2>Game Session</h2>
+                    <button class="icon-btn close-modal" style="width: 32px; height: 32px;">✕</button>
+                </div>
+                <div class="modal-body">
+                    <div id="session-active-info" style="display: none;">
+                        <div class="banner">
+                            <div>
+                                <div id="session-name-display" style="font-weight: 700; font-size: 1.05rem;">Session Name</div>
+                                <div style="color: var(--text-muted); font-size: 0.8rem; margin-top: 2px;">
+                                    Join Code: <span id="session-code-display" style="color: var(--primary); font-weight: 700; letter-spacing: 2px;">SLUG99</span>
+                                </div>
+                            </div>
+                            <button id="btn-copy-code" class="icon-btn" title="Copy code">📋</button>
+                        </div>
+                        <div id="session-admin-controls" style="margin-top: 14px; display: none;">
+                            <button id="btn-end-session" class="btn btn-danger" style="width: 100%;">End Session (Admin)</button>
+                        </div>
+                    </div>
+
+                    <div id="session-join-create">
+                        <div class="form-group">
+                            <label for="input-join-code">Enter 6-Character Session Code</label>
+                            <div style="display: flex; gap: 8px;">
+                                <input id="input-join-code" class="form-input" type="text" placeholder="ABC123" maxlength="10" style="text-transform: uppercase; font-weight: 700; letter-spacing: 2px;">
+                                <button id="btn-join-session" class="btn btn-primary" style="min-height: auto; flex: 0 0 100px;">Join</button>
+                            </div>
+                        </div>
+
+                        <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 16px 0;">
+
+                        <div class="form-group">
+                            <label for="input-new-session-name">Create New Session (Admin)</label>
+                            <input id="input-new-session-name" class="form-input" type="text" placeholder="e.g. Downtown Crawl 2026">
+                            <button id="btn-create-session" class="btn btn-info" style="margin-top: 8px; width: 100%;">Create Session</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL: Leaderboard -->
+        <div id="modal-leaderboard" class="modal-overlay">
+            <div class="modal-card">
+                <div class="modal-header">
+                    <h2>🏆 Leaderboard</h2>
+                    <button class="icon-btn close-modal" style="width: 32px; height: 32px;">✕</button>
+                </div>
+                <div class="modal-body">
+                    <div id="leaderboard-list" style="display: flex; flex-direction: column; gap: 8px;">
+                        <p style="color: var(--text-muted); text-align: center;">No completed paths yet in this session.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Main Module Application Entry Point -->
+    <script type="module" src="js/app.js"></script>
+</body>
+</html>

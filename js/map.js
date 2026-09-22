@@ -232,7 +232,7 @@ export function removeSlugAvatar(attemptId) {
 /**
  * Renders or updates the path traveled by a slug (or completed path)
  */
-export function renderTraveledTrail(attemptId, latLngs, color = '#10b981', isCompleted = false) {
+export function renderTraveledTrail(attemptId, latLngs, color = '#10b981', isCompleted = false, isExpiringSoon = false) {
     if (!mapInstance || !latLngs || latLngs.length < 2) return;
 
     let polyline = trailPolylines.get(attemptId);
@@ -240,16 +240,19 @@ export function renderTraveledTrail(attemptId, latLngs, color = '#10b981', isCom
         polyline.setLatLngs(latLngs);
         if (isCompleted) {
             polyline.setStyle({
-                weight: 5,
-                opacity: 0.95,
-                dashArray: null
+                weight: isExpiringSoon ? 4 : 5,
+                opacity: isExpiringSoon ? 0.6 : 0.95,
+                dashArray: isExpiringSoon ? '8, 6' : null,
+                className: isExpiringSoon ? 'expiring-trail' : 'completed-trail'
             });
         }
     } else {
         polyline = L.polyline(latLngs, {
             color: color,
-            weight: isCompleted ? 5 : 4,
-            opacity: isCompleted ? 0.95 : 0.8,
+            weight: isCompleted ? (isExpiringSoon ? 4 : 5) : 4,
+            opacity: isCompleted ? (isExpiringSoon ? 0.6 : 0.95) : 0.8,
+            dashArray: isCompleted && isExpiringSoon ? '8, 6' : null,
+            className: isCompleted ? (isExpiringSoon ? 'expiring-trail' : 'completed-trail') : '',
             lineCap: 'round',
             lineJoin: 'round'
         }).addTo(mapInstance);

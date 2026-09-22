@@ -16,7 +16,7 @@
           integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
 
     <!-- Application CSS -->
-    <link rel="stylesheet" href="css/style.css?v=1.0.8">
+    <link rel="stylesheet" href="css/style.css?v=1.0.9">
 
     <!-- Supabase JS Client (v2) -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -38,6 +38,7 @@
             </div>
 
             <div style="display: flex; gap: 6px;">
+                <button id="btn-rules" class="icon-btn" title="How to Play / Rules" aria-label="Rules">📖</button>
                 <button id="btn-leaderboard" class="icon-btn" title="Leaderboard" aria-label="Leaderboard">🏆</button>
                 <button id="btn-session" class="icon-btn" title="Session Info" aria-label="Session Info">👥</button>
                 <button id="btn-user" class="icon-btn" title="Account / Sign Out" aria-label="Account">👤</button>
@@ -140,6 +141,24 @@
                             <div id="profile-email" style="font-size: 0.85rem; color: var(--text-muted);">player@example.com</div>
                         </div>
 
+                        <!-- Session Career Stats -->
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px;">
+                            <div class="banner" style="flex-direction: column; align-items: center; text-align: center; padding: 10px;">
+                                <div id="profile-stat-score" style="font-size: 1.3rem; font-weight: 800; color: var(--primary);">0m</div>
+                                <div style="font-size: 0.72rem; color: var(--text-muted);">Session Crawled</div>
+                            </div>
+                            <div class="banner" style="flex-direction: column; align-items: center; text-align: center; padding: 10px;">
+                                <div id="profile-stat-paths" style="font-size: 1.3rem; font-weight: 800; color: var(--info);">0</div>
+                                <div style="font-size: 0.72rem; color: var(--text-muted);">Paths Completed</div>
+                            </div>
+                        </div>
+
+                        <!-- Sound Effects Toggle -->
+                        <div class="banner" style="margin-top: 10px; justify-content: space-between;">
+                            <span style="font-weight: 600; font-size: 0.9rem;">Sound Effects</span>
+                            <button id="btn-toggle-sound" class="btn btn-primary" style="min-height: 36px; padding: 6px 14px; font-size: 0.85rem; max-width: 90px;">🔊 ON</button>
+                        </div>
+
                         <div class="form-group" style="margin-top: 12px;">
                             <label for="input-update-name">Change Display Name</label>
                             <div style="display: flex; gap: 8px;">
@@ -220,7 +239,10 @@
             <div class="modal-card">
                 <div class="modal-header">
                     <h2>🏆 Leaderboard</h2>
-                    <button class="icon-btn close-modal" style="width: 32px; height: 32px;">✕</button>
+                    <div style="display: flex; gap: 6px; align-items: center;">
+                        <button id="btn-refresh-leaderboard" class="icon-btn" style="width: 32px; height: 32px;" title="Refresh scores">🔄</button>
+                        <button class="icon-btn close-modal" style="width: 32px; height: 32px;">✕</button>
+                    </div>
                 </div>
                 <div class="modal-body">
                     <div id="leaderboard-list" style="display: flex; flex-direction: column; gap: 8px;">
@@ -230,9 +252,61 @@
             </div>
         </div>
 
+        <!-- MODAL: How to Play / Rules -->
+        <div id="modal-rules" class="modal-overlay">
+            <div class="modal-card">
+                <div class="modal-header">
+                    <h2>📖 Slugs Field Guide</h2>
+                    <button class="icon-btn close-modal" style="width: 32px; height: 32px;">✕</button>
+                </div>
+                <div class="modal-body" style="font-size: 0.9rem; line-height: 1.6; max-height: 70vh;">
+                    <div class="banner" style="flex-direction: column; align-items: flex-start; gap: 4px; border-left: 4px solid var(--primary);">
+                        <strong style="color: var(--primary); font-size: 0.95rem;">🐌 The Mission</strong>
+                        <p style="color: var(--text-muted);">A real-world slow-burn multiplayer path strategy game. Crawl the greatest straight-line distance while cutting off your opponents!</p>
+                    </div>
+
+                    <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 4px;">
+                        <div>
+                            <strong>📍 1. Drop a Start Pin</strong>
+                            <p style="color: var(--text-muted);">Walk outside to your starting point and tap <em>Drop Start Pin</em>. Your pin is placed at your exact GPS coordinates.</p>
+                        </div>
+
+                        <div>
+                            <strong>🏁 2. Walk & Drop End Pin</strong>
+                            <p style="color: var(--text-muted);">Walk to your destination (at least 15m away) and tap <em>Drop End Pin</em> to release your slug.</p>
+                        </div>
+
+                        <div>
+                            <strong>🐌 3. Real-Time Crawl (~1.0 km/h)</strong>
+                            <p style="color: var(--text-muted);">Your slug crawls the straight-line path in real time. You don't need to keep your phone open — progress is calculated in real time.</p>
+                        </div>
+
+                        <div>
+                            <strong>⚡ 4. Defensive Trail Walls (1 Hour)</strong>
+                            <p style="color: var(--text-muted);">When your slug reaches its goal, your route turns into a solid defensive wall that stays active on the map for <strong>1 hour</strong>, blocking that corridor.</p>
+                        </div>
+
+                        <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: var(--radius-sm); padding: 10px;">
+                            <strong style="color: #f87171;">💥 5. The Spoiler Rule</strong>
+                            <p style="color: var(--text-muted); margin-top: 2px;">If a crawling slug's traveled path intersects an active trail from another player:
+                            <br>• <strong>Only the crossing slug is squished</strong> and voided!
+                            <br>• The crossing player is <strong>stunned for 1 hour</strong> (pin dropping suspended).
+                            <br>• The crossed path remains completely untouched.
+                            <br>• <em>Self-collision is ignored</em> (your own trails will never void you).</p>
+                        </div>
+
+                        <div>
+                            <strong>🏆 6. Scoring & Leaderboard</strong>
+                            <p style="color: var(--text-muted);">Every meter of completed path adds to your session total. Tap 🏆 to view rankings and medals (🥇🥈🥉).</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
     </div>
 
     <!-- Main Module Application Entry Point -->
-    <script type="module" src="js/app.js?v=1.0.8"></script>
+    <script type="module" src="js/app.js?v=1.0.9"></script>
 </body>
 </html>

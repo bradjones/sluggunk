@@ -110,14 +110,41 @@ function setupUIEventListeners() {
         }
     });
 
-    // Copy join code
-    btnCopy?.addEventListener('click', () => {
+    // Check URL parameters for ?join=CODE or ?code=CODE
+    try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const joinCodeParam = urlParams.get('join') || urlParams.get('code');
+        if (joinCodeParam && inputCode) {
+            inputCode.value = joinCodeParam.trim().toUpperCase();
+        }
+    } catch (e) {}
+
+    // Share / Copy join link
+    btnCopy?.addEventListener('click', async () => {
         if (!currentSession?.join_code) return;
-        navigator.clipboard?.writeText(currentSession.join_code).then(() => {
-            showToast(`Code ${currentSession.join_code} copied to clipboard!`, 'info');
-        }).catch(() => {
+
+        const shareUrl = `${window.location.origin}${window.location.pathname}?join=${currentSession.join_code}`;
+        const shareData = {
+            title: `Join "${currentSession.name}" on Slugs`,
+            text: `Join my Slugs session "${currentSession.name}"! Code: ${currentSession.join_code}`,
+            url: shareUrl
+        };
+
+        if (navigator.share && /mobile|android|iphone|ipad/i.test(navigator.userAgent)) {
+            try {
+                await navigator.share(shareData);
+                return;
+            } catch (err) {
+                // User cancelled or share aborted, fall back to clipboard
+            }
+        }
+
+        try {
+            await navigator.clipboard.writeText(shareUrl);
+            showToast(`Invite link copied to clipboard!`, 'success', 2500);
+        } catch {
             showToast(`Join code: ${currentSession.join_code}`, 'info');
-        });
+        }
     });
 
     // Leave session

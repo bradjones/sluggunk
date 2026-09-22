@@ -535,6 +535,9 @@ function startMovementLoop() {
                 removeRemoteStartPin(attempt.id);
 
                 if (attempt.expires_at && new Date(attempt.expires_at).getTime() > now) {
+                    const remainingMs = new Date(attempt.expires_at).getTime() - now;
+                    const isExpiringSoon = remainingMs <= 10 * 60 * 1000;
+
                     renderTraveledTrail(
                         attempt.id,
                         [
@@ -542,7 +545,8 @@ function startMovementLoop() {
                             [attempt.end_lat, attempt.end_lng]
                         ],
                         color,
-                        true // isCompleted (solid thick trail)
+                        true, // isCompleted (solid thick trail)
+                        isExpiringSoon
                     );
                 } else {
                     // Expired
@@ -654,9 +658,83 @@ async function completeMyAttempt(attempt, scoreMeters) {
 }
 
 /**
+ * Checks whether sound effects are enabled
+ */
+export function isSoundEnabled() {
+    return localStorage.getItem('slugs_sound_enabled') !== 'false';
+}
+
+/**
+ * Toggles sound effects and updates button label
+ */
+export function toggleSound() {
+    const enabled = !isSoundEnabled();
+    localStorage.setItem('slugs_sound_enabled', enabled ? 'true' : 'false');
+    updateSoundButtonUI();
+    return enabled;
+}
+
+/**
+ * Updates sound toggle button UI
+ */
+export function updateSoundButtonUI() {
+    const btn = document.getElementById('btn-toggle-sound');
+    if (!btn) return;
+    const enabled = isSoundEnabled();
+    btn.textContent = enabled ? '🔊 ON' : '🔇 OFF';
+    btn.className = enabled ? 'btn btn-primary' : 'btn btn-secondary';
+    btn.style.minHeight = '36px';
+    btn.style.padding = '6px 14px';
+    btn.style.fontSize = '0.85rem';
+}
+
+/**
+ * Calculates and updates user's session stats in the profile modal
+ */
+export async function updateUserProfileStats() {
+    const user = getCurrentUser();
+    const session = getCurrentSession();
+    const statScore = document.getElementById('profile-stat-score');
+    const statPaths = document.getElementById('profile-stat-paths');
+    if (!statScore || !statPaths) return;
+
+    if (!user || !session) {
+        statScore.textContent = '0m';
+        statPaths.textContent = '0';
+        return;
+    }
+
+    const supabase = getSupabase();
+    if (!supabase) return;
+
+    try {
+        const { data: attempts } = await supabase
+            .from('attempts')
+            .select('score, status')
+            .eq('session_id', session.id)
+            .eq('player_id', user.id)
+            .eq('status', 'completed');
+
+        let total = 0;
+        let count = 0;
+        attempts?.forEach(a => {
+            total += Math.round(a.score || 0);
+            count++;
+        });
+
+        statScore.textContent = `${total.toLocaleString()}m`;
+        statPaths.textContent = `${count}`;
+    } catch (e) {
+        console.warn('Error fetching profile stats:', e);
+    }
+}
+
+/**
  * Plays a quick synth squish sound effect when a slug is voided (Web Audio API)
  */
 function playSquishSound() {
+    if (!isSoundEnabled()) return;
+
     try {
         const AudioContextClass = window.AudioContext || window.webkitAudioContext;
         if (!AudioContextClass) return;

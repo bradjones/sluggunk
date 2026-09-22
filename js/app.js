@@ -4,7 +4,14 @@ import { initMap } from './map.js';
 import { openModal, closeModal, setupModalListeners, showToast } from './ui.js';
 import { initAuth, getCurrentUser, getCurrentProfile } from './auth.js';
 import { initSessions, getCurrentSession } from './sessions.js';
-import { initGame, syncGameState, loadAndRenderLeaderboard } from './game.js';
+import { 
+    initGame, 
+    syncGameState, 
+    loadAndRenderLeaderboard,
+    toggleSound,
+    updateSoundButtonUI,
+    updateUserProfileStats
+} from './game.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     // 1. Initialize modal dismissal and interactive triggers
@@ -19,6 +26,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 3. Initialize Game Action Handlers (pins, recenter, stuns)
     initGame();
+    updateSoundButtonUI();
 
     // 4. Initialize Authentication and Profile Sync
     initAuth((user, profile) => {
@@ -58,9 +66,18 @@ document.addEventListener('DOMContentLoaded', () => {
         closeModal('modal-setup');
     });
 
+    document.getElementById('btn-rules')?.addEventListener('click', () => {
+        openModal('modal-rules');
+    });
+
     document.getElementById('btn-leaderboard')?.addEventListener('click', () => {
         loadAndRenderLeaderboard();
         openModal('modal-leaderboard');
+    });
+
+    document.getElementById('btn-refresh-leaderboard')?.addEventListener('click', () => {
+        loadAndRenderLeaderboard();
+        showToast('Leaderboard refreshed', 'info', 1200);
     });
 
     document.getElementById('btn-session')?.addEventListener('click', () => {
@@ -71,11 +88,34 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!isConfigured()) {
             openModal('modal-setup');
         } else {
+            updateUserProfileStats();
+            updateSoundButtonUI();
             openModal('modal-auth');
         }
     });
 
-    console.log('Slugs Phase 4 (Map & Pin Dropping) initialized.');
+    document.getElementById('btn-toggle-sound')?.addEventListener('click', () => {
+        const enabled = toggleSound();
+        showToast(enabled ? 'Sound effects enabled 🔊' : 'Sound effects muted 🔇', 'info', 1500);
+    });
+
+    // 8. Mobile visibility and connectivity listeners
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+            syncGameState();
+        }
+    });
+
+    window.addEventListener('online', () => {
+        showToast('🟢 Online! Reconnected to session.', 'success', 2500);
+        syncGameState();
+    });
+
+    window.addEventListener('offline', () => {
+        showToast('🔴 Offline: Waiting for connection...', 'warning', 4000);
+    });
+
+    console.log('Slugs Phase 7 (Scoring & Polish) initialized.');
 });
 
 function updateHUDStatus() {

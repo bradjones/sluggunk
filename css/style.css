@@ -483,3 +483,19 @@ html, body {
         opacity: 0;
     }
 }
+
+/* Phase 7 Trail & Path Polish */
+.completed-trail {
+    filter: drop-shadow(0 0 3px currentColor);
+    transition: opacity 0.5s ease;
+}
+
+.expiring-trail {
+    stroke-dasharray: 8, 6;
+    animation: trail-dissipate 2.5s ease-in-out infinite alternate;
+}
+
+@keyframes trail-dissipate {
+    0% { opacity: 0.75; }
+    100% { opacity: 0.3; }
+}

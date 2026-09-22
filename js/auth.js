@@ -154,7 +154,7 @@ function setupAuthForm(onUserChanged) {
         }
 
         const supabase = getSupabase();
-        const email = emailInput.value.trim();
+        const email = emailInput.value.trim().toLowerCase();
         const password = passInput.value;
         const displayName = nameInput.value.trim();
 
@@ -174,7 +174,11 @@ function setupAuthForm(onUserChanged) {
 
                 if (error) throw error;
 
-                showToast(`Welcome ${displayName}! Account created.`, 'success');
+                if (data?.user && (!data.session || data.user.identities?.length === 0)) {
+                    showToast('Account created! Note: "Confirm email" is enabled in Supabase. Please disable it in Auth -> Providers -> Email for instant logins.', 'warning', 7000);
+                } else {
+                    showToast(`Welcome ${displayName}! Account created.`, 'success', 4000);
+                }
                 closeModal('modal-auth');
             } else {
                 // Sign In
@@ -185,12 +189,19 @@ function setupAuthForm(onUserChanged) {
 
                 if (error) throw error;
 
-                showToast('Signed in successfully!', 'success');
+                showToast('Signed in successfully!', 'success', 3000);
                 closeModal('modal-auth');
             }
         } catch (err) {
             console.error('Auth error:', err);
-            showToast(err.message || 'Authentication failed.', 'error');
+            const msg = err.message || '';
+            if (msg.toLowerCase().includes('email not confirmed')) {
+                showToast('⚠️ "Email not confirmed". In Supabase: go to Auth -> Providers -> Email and turn off "Confirm email", or run the confirmation SQL in the SQL Editor.', 'error', 8000);
+            } else if (msg.toLowerCase().includes('invalid login credentials')) {
+                showToast('Invalid email or password. Please check spelling.', 'error', 5000);
+            } else {
+                showToast(msg || 'Authentication failed.', 'error', 6000);
+            }
         } finally {
             btnSubmit.disabled = false;
             btnSubmit.textContent = isRegisterMode ? 'Create Account' : 'Sign In';
